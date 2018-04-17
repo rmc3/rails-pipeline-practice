@@ -5,3 +5,7 @@ one:
 
 two:
   username: MyString2
+
+barbaz:
+  username: barbaz
+  password_digest: <%= User.digest('barbazbarbaz') %>

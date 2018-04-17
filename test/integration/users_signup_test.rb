@@ -23,7 +23,7 @@ class UsersSignupTest < ActionDispatch::IntegrationTest
                                          password_confirmation: 'foobarfoobar' } }
     end
     follow_redirect!
-    assert_template 'welcome/index'
+    assert_template 'sessions/new'
     assert_select 'div.alert-success'
   end
 end

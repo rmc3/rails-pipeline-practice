@@ -1,24 +1,38 @@
-# README
+# rails-pipeline-practice
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+This repository contains a Rails application intended as a simple testing environment with unit and integration tests for practicing CI/CD pipeline practices.
 
-Things you may want to cover:
+## Prerequisites
 
-* Ruby version
+- Ruby 2.4
+- bundler `gem install bundler`
 
-* System dependencies
+## Running in a development environment locally
 
-* Configuration
+Install gems
 
-* Database creation
+```
+bundle install --with development
+```
 
-* Database initialization
+Start the Puma server
 
-* How to run the test suite
+```
+rails server
+```
 
-* Services (job queues, cache servers, search engines, etc.)
+The application should come up and be available at http://localhost:3030
 
-* Deployment instructions
+## Running tests
 
-* ...
+Install gems
+
+```
+bundle install --with test
+```
+
+Run tests
+
+```
+rake test
+```

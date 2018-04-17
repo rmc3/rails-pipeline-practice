@@ -1,3 +1,8 @@
-<h1>Welcome#index</h1>
-<p>Find me in app/views/welcome/index.html.erb</p>
-<p>Log in <%= link_to 'here', login_path %>.</p>
+<% if logged_in? %>
+  <div id="privileged_information">
+    <p>Wow, that's an awesome catto.</p>
+    <%= image_tag("cat.png") %>
+  </div>
+<% else %>
+  <p>Log in <%= link_to 'here', login_path %> to see the privileged information, or <%= link_to 'sign up', signup_path %>.</p>
+<% end %>
