@@ -3,7 +3,7 @@ class SessionsController < ApplicationController
 
   def create
     user = User.find_by(username: params[:session][:username].downcase)
-    if user && user.authenticate(params[:session][:password])
+    if user&.authenticate(params[:session][:password])
       execute_login(user: user)
     else
       flash.now[:danger] = 'Invalid username/password combination'
