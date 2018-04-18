@@ -10,6 +10,25 @@ default: &default
   timeout: 5000
   encoding: utf8
 
+local_docker: &local_docker
+  host: <%= ENV['DB_HOST'] %>
+  password: <%= ENV['DB_PASSWORD'] %>
+  username: <%= ENV['DB_USERNAME'] %>
+  adapter: mysql2
+  encoding: utf8
+  database: <%= ENV['DB_NAME'] %>_<%= ENV['RAILS_ENV'] %>
+
+aws_aurora: &aws_aurora
+  host: <%= ENV['DB_HOST'] %>
+  password: <%= ENV['DB_PASSWORD'] %>
+  username: <%= ENV['DB_USERNAME'] %>
+  sslmode: 'REQUIRED'
+  sslca: /aurora/rds-combined-ca-bundle.pem
+  adapter: mysql2
+  encoding: utf8
+  database: <%= ENV['DB_NAME'] %>_<%= ENV['RAILS_ENV'] %>
+
+
 development:
   <<: *default
   database: db/development.sqlite3
@@ -21,6 +40,20 @@ test:
   <<: *default
   database: db/test.sqlite3
 
-production:
-  <<: *default
-  database: db/production.sqlite3
+local_integration:
+  <<: *local_docker
+
+local_acceptance:
+  <<: *local_docker
+
+local_production:
+  <<: *local_docker
+
+ecs_integration:
+  <<: *aws_aurora
+
+ecs_acceptance:
+  <<: *aws_aurora
+
+ecs_production:
+  <<: *aws_aurora
