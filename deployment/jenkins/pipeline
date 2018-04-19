@@ -1,0 +1,24 @@
+node {
+  def app
+
+  stage('Preparation') { // for display purposes
+    // Get some code from a GitHub repository
+    git 'https://github.com/rmc3/rails-pipeline-practice.git'
+  }
+
+  stage('Build image') {
+    // Run the docker build
+    app = docker.build("rpp")
+  }
+
+  stage('Test image') {
+    sh 'RAILS_ENV=development docker run --entrypoint rake rpp test'
+  }
+
+  stage('Push image') {
+    docker.withRegistry("https://324320755747.dkr.ecr.us-east-2.amazonaws.com") {
+      sh '$(aws ecr get-login --region us-east-2 | sed "s/-e none//")'
+      docker.image("rpp").push()
+    }
+  }
+}

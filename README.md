@@ -86,6 +86,37 @@ RAILS_ENV=local_integration docker-compose up -V
 
 Substitute with other environments as desired.
 
+## Jenkins Pipeline
+
+This section describes how to set up and run the Jenkins pipeline.
+
+### Set up ECS environment
+
+This process assumes you'll be deploying images to an Elastic Container Repository. The CloudFormation template in `deployment/cloudformation/ecs-environment.yaml` can automate creating an ECR and ECS cluster, along with IAM policies and profiles required for Jenkins to work with them.
+
+### Install Jenkins
+
+For this example, we used the Bitnami Jenkins EC2 AMI. If deploying on EC2, you can attach the instance profile created by the CloudFormation template in `deployment/cloudformation/ecs-environment.yaml` to give the instance the necessary permissions to deploy to your ECR repository.
+
+### Install AWS CLI
+
+Install the AWS CLI tools through your favorite method.
+
+### Install Docker
+
+Install docker and add the Jenkins user to the `docker` group.
+
+```
+apt-get install -y docker
+usermod -a -G docker tomcat
+```
+
+Restart Jenkins fully (all the way down, not Jenkins' built in restart, as this seems to be necessary to pick up the group change)
+
+### Create the pipeline
+
+Create a pipeline with the example configuration in `deployment/jenkins/pipeline`. Adjust AWS-related parameters as necessary for your environment.
+
 ## Acknowledgements
 
 This exercise draws heavily from Michael Hartl's [Ruby on Rails Tutorial](https://www.railstutorial.org/book), which was incredibly helpful.

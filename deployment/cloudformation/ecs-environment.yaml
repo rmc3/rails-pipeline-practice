@@ -93,7 +93,7 @@ Resources:
     Properties:
       CidrIp: !Ref VPCCIDRBlock
       GroupId:
-        Ref: SgHttpElb1
+        Ref: PublicAlbSecurityGroup
       IpProtocol: -1
     Type: AWS::EC2::SecurityGroupEgress
   gw1:
@@ -110,21 +110,21 @@ Resources:
           Value:
             Fn::Sub: "${AWS::StackName}-igw"
     Type: AWS::EC2::InternetGateway
-  ingress10:
+  PublicAlbSecurityGroupHttpsIngress:
     Properties:
       CidrIp: 0.0.0.0/0
       FromPort: 443
       GroupId:
-        Ref: SgHttpElb1
+        Ref: PublicAlbSecurityGroup
       IpProtocol: tcp
       ToPort: 443
     Type: AWS::EC2::SecurityGroupIngress
-  ingress9:
+  PublicAlbSecurityGroupHttpIngress:
     Properties:
       CidrIp: 0.0.0.0/0
       FromPort: 80
       GroupId:
-        Ref: SgHttpElb1
+        Ref: PublicAlbSecurityGroup
       IpProtocol: tcp
       ToPort: 80
     Type: AWS::EC2::SecurityGroupIngress
@@ -214,12 +214,19 @@ Resources:
       VpcId:
         Ref: vpc
     Type: AWS::EC2::RouteTable
-  SgHttpElb1:
+  PublicAlbSecurityGroup:
     Properties:
       GroupDescription: 'Security group for instances in this environment'
       VpcId:
         Ref: vpc
     Type: AWS::EC2::SecurityGroup
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W9
+            reason: "This is a public facing ELB and ingress from the internet should be permitted."
+          - id: W2
+            reason: "This is a public facing ELB and ingress from the internet should be permitted."
   subnetacl1:
     Properties:
       NetworkAclId:
@@ -414,9 +421,9 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:s3:::${LogsS3Bucket}/*"
   JenkinsEcsPolicy:
-    Type: AWS::IAM::Policy
+    Type: AWS::IAM::ManagedPolicy
     Properties:
-      PolicyName: JenkinsECSAccess
+      ManagedPolicyName: JenkinsECSAccess
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -427,8 +434,20 @@ Resources:
             - ecs:DescribeContainerInstances
             - ecs:ListTaskDefinitions
             - ecs:DescribeTaskDefinition
+            - ecr:GetAuthorizationToken
+            - ecr:BatchCheckLayerAvailability
+            - ecr:GetDownloadUrlForLayer
+            - ecr:GetRepositoryPolicy
+            - ecr:DescribeRepositories
+            - ecr:ListImages
+            - ecr:DescribeImages
+            - ecr:BatchGetImage
+            - ecr:InitiateLayerUpload
+            - ecr:UploadLayerPart
+            - ecr:CompleteLayerUpload
+            - ecr:PutImage
           Effect: Allow
-          Resource: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:*"
+          Resource: "*"
         - Sid: Stmt1452746887374
           Action:
             - ecs:StopTask
@@ -446,6 +465,11 @@ Resources:
             - ecs:DescribeTasks
           Effect: Allow
           Resource: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task/*"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W13
+            reason: "ecs:ListClusters does not accept specific resources and must be declared with Resources: *"
   JenkinsRole:
     Type: AWS::IAM::Role
     Properties:
@@ -514,7 +538,7 @@ Outputs:
   ELBSecurityGroup:
     Description: "The security group for the ELB instances."
     Value:
-      Ref: SgHttpElb1
+      Ref: PublicAlbSecurityGroup
     Export:
       Name:
         Fn::Sub: "${AWS::StackName}-ELBSecurityGroup"
