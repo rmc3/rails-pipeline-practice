@@ -14,10 +14,6 @@ Docker
 - Docker
 - Docker Compose
 
-Vagrant
-
-- Vagrant
-
 ## Running in a development environment locally
 
 This process will run the application in your local Ruby environment with a sqlite database.
