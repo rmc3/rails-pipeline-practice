@@ -1,0 +1,547 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'Creates an ECS environment for deploying testing/acceptance/staging environments.'
+Parameters:
+  ApplicationName:
+    Description: "The name of the application deployed in this environment."
+    Type: String
+    MinLength: 1
+  PrivateSubnet1CIDR:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
+    Description: "CIDR block for private subnet 1 located in AZ 1."
+    Type: String
+    Default: "172.50.0.0/24"
+  PrivateSubnet2CIDR:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
+    Description: "CIDR block for private subnet 2 located in AZ 2."
+    Type: String
+    Default: "172.50.1.0/24"
+  PublicSubnet1CIDR:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
+    Description: "CIDR block for public subnet 1 located in AZ 1."
+    Type: String
+    Default: "172.50.128.0/24"
+  PublicSubnet2CIDR:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
+    Description: "CIDR block for public subnet 2 located in AZ 2."
+    Type: String
+    Default: "172.50.129.0/24"
+  VPCCIDRBlock:
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
+    Description: 'The RFC1918 CIDR block to be allocated to the VPC created by this
+      template.'
+    Type: String
+    Default: "172.50.0.0/16"
+Mappings:
+  AWSRegionToLogsAccountArn:
+    # See http://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-access-logs.html#enable-access-logging
+    us-east-1:
+      AccountArn: arn:aws:iam::127311923021:root
+    us-east-2:
+      AccountArn: arn:aws:iam::033677994240:root
+    us-west-1:
+      AccountArn: arn:aws:iam::027434742980:root
+    us-west-2:
+      AccountArn: arn:aws:iam::797873946194:root
+    eu-west-2:
+      AccountArn: arn:aws:iam::652711504416:root
+Resources:
+  acl:
+    Properties:
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::NetworkAcl
+  acl1:
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      Egress: true
+      NetworkAclId:
+        Ref: acl
+      Protocol: -1
+      RuleAction: allow
+      RuleNumber: 100
+    Type: AWS::EC2::NetworkAclEntry
+  acl2:
+    Properties:
+      CidrBlock: 0.0.0.0/0
+      NetworkAclId:
+        Ref: acl
+      Protocol: -1
+      RuleAction: allow
+      RuleNumber: 100
+    Type: AWS::EC2::NetworkAclEntry
+  dbSubnetPrivate:
+    Properties:
+      DBSubnetGroupDescription: 'Private subnets'
+      SubnetIds:
+        - Ref: SubnetPrivate1
+        - Ref: SubnetPrivate2
+    Type: AWS::RDS::DBSubnetGroup
+  DhcpAssoc1:
+    Properties:
+      DhcpOptionsId:
+        Ref: DhcpOpts
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::VPCDHCPOptionsAssociation
+  DhcpOpts:
+    Properties:
+      DomainName: ec2.internal
+      DomainNameServers:
+        - AmazonProvidedDNS
+    Type: AWS::EC2::DHCPOptions
+  Egress2:
+    Properties:
+      CidrIp: !Ref VPCCIDRBlock
+      GroupId:
+        Ref: SgHttpElb1
+      IpProtocol: -1
+    Type: AWS::EC2::SecurityGroupEgress
+  gw1:
+    Properties:
+      InternetGatewayId:
+        Ref: igw
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::VPCGatewayAttachment
+  igw:
+    Properties:
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-igw"
+    Type: AWS::EC2::InternetGateway
+  ingress10:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      FromPort: 443
+      GroupId:
+        Ref: SgHttpElb1
+      IpProtocol: tcp
+      ToPort: 443
+    Type: AWS::EC2::SecurityGroupIngress
+  ingress9:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      FromPort: 80
+      GroupId:
+        Ref: SgHttpElb1
+      IpProtocol: tcp
+      ToPort: 80
+    Type: AWS::EC2::SecurityGroupIngress
+  NatGwEipAllocation1:
+    DependsOn: vpc
+    Properties:
+      Domain: vpc
+    Type: AWS::EC2::EIP
+  NatGwEipAllocation2:
+    DependsOn: vpc
+    Properties:
+      Domain: vpc
+    Type: AWS::EC2::EIP
+  NatGwPublic1:
+    DependsOn: NatGwEipAllocation1
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - NatGwEipAllocation1
+          - AllocationId
+      SubnetId:
+        Ref: SubnetPublic1
+    Type: AWS::EC2::NatGateway
+  NatGwPublic2:
+    DependsOn: NatGwEipAllocation2
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - NatGwEipAllocation2
+          - AllocationId
+      SubnetId:
+        Ref: SubnetPublic1
+    Type: AWS::EC2::NatGateway
+  route1:
+    DependsOn: gw1
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: igw
+      RouteTableId:
+        Ref: RtbPublicigw
+    Type: AWS::EC2::Route
+  route3:
+    DependsOn: NatGwPublic1
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        Ref: NatGwPublic1
+      RouteTableId:
+        Ref: RtbPrivate1nat
+    Type: AWS::EC2::Route
+  route5:
+    DependsOn: NatGwPublic2
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        Ref: NatGwPublic2
+      RouteTableId:
+        Ref: RtbPrivate2nat
+    Type: AWS::EC2::Route
+  rtbdefault:
+    Properties:
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::RouteTable
+  RtbPrivate1nat:
+    Properties:
+      Tags:
+        - Key: Name
+          Value: private1_nat
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::RouteTable
+  RtbPrivate2nat:
+    Properties:
+      Tags:
+        - Key: Name
+          Value: private2_nat
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::RouteTable
+  RtbPublicigw:
+    Properties:
+      Tags:
+        - Key: Name
+          Value: public_igw
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::RouteTable
+  SgHttpElb1:
+    Properties:
+      GroupDescription: 'Security group for instances in this environment'
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::SecurityGroup
+  subnetacl1:
+    Properties:
+      NetworkAclId:
+        Ref: acl
+      SubnetId:
+        Ref: SubnetPublic2
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+  subnetacl2:
+    Properties:
+      NetworkAclId:
+        Ref: acl
+      SubnetId:
+        Ref: SubnetPublic1
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+  subnetacl3:
+    Properties:
+      NetworkAclId:
+        Ref: acl
+      SubnetId:
+        Ref: SubnetPrivate2
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+  subnetacl4:
+    Properties:
+      NetworkAclId:
+        Ref: acl
+      SubnetId:
+        Ref: SubnetPrivate1
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+  SubnetPrivate1:
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-private1"
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::Subnet
+  SubnetPrivate2:
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-private2"
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::Subnet
+  SubnetPublic1:
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: !Ref PublicSubnet1CIDR
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-public1"
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::Subnet
+  SubnetPublic2:
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: !Ref PublicSubnet2CIDR
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: "${AWS::StackName}-public2"
+      VpcId:
+        Ref: vpc
+    Type: AWS::EC2::Subnet
+  subnetroute1:
+    Properties:
+      RouteTableId:
+        Ref: RtbPublicigw
+      SubnetId:
+        Ref: SubnetPublic1
+    Type: AWS::EC2::SubnetRouteTableAssociation
+  subnetroute2:
+    Properties:
+      RouteTableId:
+        Ref: RtbPublicigw
+      SubnetId:
+        Ref: SubnetPublic2
+    Type: AWS::EC2::SubnetRouteTableAssociation
+  subnetroute3:
+    Properties:
+      RouteTableId:
+        Ref: RtbPrivate1nat
+      SubnetId:
+        Ref: SubnetPrivate1
+    Type: AWS::EC2::SubnetRouteTableAssociation
+  subnetroute4:
+    Properties:
+      RouteTableId:
+        Ref: RtbPrivate2nat
+      SubnetId:
+        Ref: SubnetPrivate2
+    Type: AWS::EC2::SubnetRouteTableAssociation
+  vpc:
+    Properties:
+      CidrBlock:
+        Ref: VPCCIDRBlock
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Ref ApplicationName
+        - Key: ApplicationName
+          Value: !Ref ApplicationName
+    Type: AWS::EC2::VPC
+  LogsS3Bucket:
+    Properties:
+      AccessControl: Private
+      BucketName:
+        Fn::Sub: "${AWS::StackName}-logs"
+    Type: AWS::S3::Bucket
+  LogsS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LogsS3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Id: AllowLogsAccess
+        Statement:
+          Sid: AllowLogsAccess1
+          Effect: Allow
+          Principal:
+            AWS:
+              - !FindInMap [AWSRegionToLogsAccountArn, !Ref "AWS::Region", AccountArn]
+          Action: s3:PutObject
+          Resource: !Sub "arn:aws:s3:::${LogsS3Bucket}/*"
+  LogsAccessIAMGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Sub "${AWS::StackName}LogsAccess"
+      Path: /
+      Policies:
+        - PolicyName: RDSCloudWatchReadOnly
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Sid: 1
+                Action:
+                  - "rds:Describe*"
+                  - "rds:Download*"
+                  - "rds:ListTagsForResource"
+                  - "ec2:DescribeAccountAttributes"
+                  - "ec2:DescribeAvailabilityZones"
+                  - "ec2:DescribeSecurityGroups"
+                  - "ec2:DescribeVpcs"
+                Resource: "*"
+              - Effect: Allow
+                Sid: 2
+                Action:
+                  - "cloudwatch:GetMetricStatistics"
+                  - "logs:Describe*"
+                  - "logs:Get*"
+                  - "logs:TestMetricFilter"
+                  - "logs:FilterLogEvents"
+                Resource: "*"
+        - PolicyName: ReadLogsBucket
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Sid: 1
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${LogsS3Bucket}"
+              - Effect: Allow
+                Sid: 2
+                Action:
+                  - "s3:List*"
+                  - "s3:Get*"
+                Resource:
+                  - !Sub "arn:aws:s3:::${LogsS3Bucket}/*"
+  JenkinsEcsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: JenkinsECSAccess
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Sid: Stmt1452746887373
+          Action:
+            - ecs:RegisterTaskDefinition
+            - ecs:ListClusters
+            - ecs:DescribeContainerInstances
+            - ecs:ListTaskDefinitions
+            - ecs:DescribeTaskDefinition
+          Effect: Allow
+          Resource: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:*"
+        - Sid: Stmt1452746887374
+          Action:
+            - ecs:StopTask
+            - ecs:ListContainerInstances
+          Effect: Allow
+          Resource: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${EcsCluster}"
+        - Sid: Stmt1452746887375
+          Action:
+            - ecs:RunTask
+          Effect: Allow
+          Resource: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/*:*"
+        - Sid: Stmt1452746887376
+          Action:
+            - ecs:StopTask
+            - ecs:DescribeTasks
+          Effect: Allow
+          Resource: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task/*"
+  JenkinsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - !Ref JenkinsEcsPolicy
+  JenkinsInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref JenkinsRole
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ApplicationName
+  EcsRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref ApplicationName
+Outputs:
+  VPCId:
+    Description: "VPC Id"
+    Value:
+      Ref: vpc
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-VPCId"
+  SubnetPrivate1:
+    Description: "The first private subnet."
+    Value:
+      Ref: SubnetPrivate1
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-SubnetPrivate1"
+  SubnetPrivate2:
+    Description: "The second private subnet."
+    Value:
+      Ref: SubnetPrivate2
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-SubnetPrivate2"
+  SubnetPublic1:
+    Description: "The first public subnet."
+    Value:
+      Ref: SubnetPublic1
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-SubnetPublic1"
+  SubnetPublic2:
+    Description: "The second public subnet."
+    Value:
+      Ref: SubnetPublic2
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-SubnetPublic2"
+  ELBSecurityGroup:
+    Description: "The security group for the ELB instances."
+    Value:
+      Ref: SgHttpElb1
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-ELBSecurityGroup"
+  DbSubnetPrivate:
+    Description: "The private subnet group for RDS instances."
+    Value:
+      Ref: dbSubnetPrivate
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-DbSubnetPrivate"
+  ApplicationName:
+    Description: "The name of the application passed through from this stack's inputs."
+    Value: !Ref ApplicationName
+    Export:
+      Name: !Sub "${AWS::StackName}-ApplicationName"
+  EcsCluster:
+    Description: "The ECS cluster created by this stack."
+    Value: !Ref EcsCluster
+    Export:
+      Name: !Sub "${AWS::StackName}-EcsCluster"
+  JenkinsEcsPolicy:
+    Description: "The Jenkins IAM policy for ECS slave access created by this stack."
+    Value: !Ref JenkinsEcsPolicy
+    Export:
+      Name: !Sub "${AWS::StackName}-JenkinsEcsPolicy"
+  JenkinsInstanceProfile:
+    Description: "The Jenkins IAM instance profile created by this stack."
+    Value: !Ref JenkinsInstanceProfile
+    Export:
+      Name: !Sub "${AWS::StackName}-JenkinsInstanceProfile"
